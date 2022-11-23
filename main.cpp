@@ -11,6 +11,7 @@
 #include <iostream>
 #include <vector>
 #include <cstring>
+#include <optional>
 
 const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 600;
@@ -57,6 +58,14 @@ void DestroyDebugUtilsMessengerEXT(VkInstance instance,
     }
 }
 
+struct QueueFamilyIndices {
+    std::optional<uint32_t> graphicsFamily;
+
+    bool isComplete() {
+        return graphicsFamily.has_value();
+    }
+};
+
 class HelloTriangleApplication {
 public:
     void run() {
@@ -71,6 +80,7 @@ private:
     VkInstance instance;
     VkDebugUtilsMessengerEXT debugMessenger;
     VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
+    VkDevice device;
 
     void initWindow() {
         std::cout << "한글을 입력 해 봅시다." << std::endl;
@@ -97,14 +107,58 @@ private:
     }
 
     void initVulkan() {
+        checkInstanceExtensions();
+
         createInstance();
         setupDebugMessenger();
+
+
         pickPhysicalDevice();
-        checkInstanceExtensions();
+        createLogicalDevice();
+
 
         glm::mat4 matrix;
         glm::vec4 vec;
         auto test = matrix * vec;
+    }
+
+    void createLogicalDevice() {
+        QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
+
+        VkDeviceQueueCreateInfo queueCreateInfo{};
+        queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+        queueCreateInfo.queueFamilyIndex = indices.graphicsFamily.value();
+        queueCreateInfo.queueCount = 1;
+        float queuePriority = 1.0f;
+        queueCreateInfo.pQueuePriorities = &queuePriority;
+
+        VkPhysicalDeviceFeatures deviceFeatures{};
+
+        VkDeviceCreateInfo createInfo{};
+        createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+        createInfo.pQueueCreateInfos = &queueCreateInfo;
+        createInfo.queueCreateInfoCount = 1;
+        createInfo.pEnabledFeatures = &deviceFeatures;
+
+        uint32_t extensionCount = 0;
+        vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extensionCount, nullptr);
+        std::vector<VkExtensionProperties> extensions(extensionCount);
+        std::vector<const char *> extensionNames = {
+                "VK_KHR_portability_subset"
+        };
+        vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extensionCount, extensions.data());
+        std::cout << "device extensions:" << std::endl;
+        for (const auto &extension: extensions) {
+            //extensionNames.emplace_back(extension.extensionName);
+            std::cout << '\t' << extension.extensionName << std::endl;
+        }
+
+        createInfo.enabledExtensionCount = extensionNames.size();
+        createInfo.ppEnabledExtensionNames = extensionNames.data();
+
+        if (vkCreateDevice(physicalDevice, &createInfo, nullptr, &device) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create logical device!");
+        }
     }
 
     void pickPhysicalDevice() {
@@ -117,7 +171,7 @@ private:
         std::vector<VkPhysicalDevice> devices(deviceCount);
         vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
 
-        for (const auto &device : devices) {
+        for (const auto &device: devices) {
             if (isDeviceSuitable(device)) {
                 physicalDevice = device;
                 break;
@@ -130,7 +184,9 @@ private:
     }
 
     bool isDeviceSuitable(VkPhysicalDevice device) {
-        return true;
+        QueueFamilyIndices indices = findQueueFamilies(device);
+
+        return indices.isComplete();
     }
 
     void populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT &createInfo) {
@@ -215,6 +271,17 @@ private:
             extensions.emplace_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
         }
 
+        // Device extension 중 VK_KHR_portability_subset 사용하려면
+        // Instance extension 중 VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME 사용이 필요하다.
+        extensions.emplace_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
+
+        /*
+
+        extensions.emplace_back(VK_KHR_EXTERNAL_FENCE_CAPABILITIES_EXTENSION_NAME);
+        extensions.emplace_back(VK_KHR_DEVICE_GROUP_CREATION_EXTENSION_NAME);
+        extensions.emplace_back(VK_KHR_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME);
+        extensions.emplace_back(VK_KHR_EXTERNAL_SEMAPHORE_CAPABILITIES_EXTENSION_NAME);
+*/
         return extensions;
     }
 
@@ -223,6 +290,7 @@ private:
                                                         const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData,
                                                         void *pUserData) {
         std::cerr << "validation layer: " << pCallbackData->pMessage << std::endl;
+        return VK_FALSE;
     }
 
     void checkInstanceExtensions() {
@@ -275,6 +343,7 @@ private:
     }
 
     void cleanup() {
+        vkDestroyDevice(device, nullptr);
         if (enableValidationLayers) {
             DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
         }
@@ -283,6 +352,25 @@ private:
 
         glfwTerminate();
         std::cout << "안녕히 가세요." << std::endl;
+    }
+
+    QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device) {
+        QueueFamilyIndices indices;
+        uint32_t queueFamilyCount = 0;
+        vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
+        std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+        vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
+        uint32_t i = 0;
+        for (const auto &queueFamily: queueFamilies) {
+            if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+                indices.graphicsFamily = i;
+            }
+
+            if (indices.isComplete()) {
+                break;
+            }
+        }
+        return indices;
     }
 };
 
