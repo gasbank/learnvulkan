@@ -216,7 +216,9 @@ private:
         vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extensionCount, nullptr);
         std::vector<VkExtensionProperties> extensions(extensionCount);
         std::vector<const char *> extensionNames = {
+#ifdef __APPLE__
                 "VK_KHR_portability_subset"
+#endif
         };
         vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extensionCount, extensions.data());
         std::cout << "device extensions:" << std::endl;
@@ -320,8 +322,9 @@ private:
 
         // Device extension 중 VK_KHR_portability_subset 사용하려면
         // Instance extension 중 VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME 사용이 필요하다.
+#ifdef __APPLE__
         extensions.emplace_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
-
+#endif
         /*
 
         extensions.emplace_back(VK_KHR_EXTERNAL_FENCE_CAPABILITIES_EXTENSION_NAME);
